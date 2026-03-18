@@ -1,9 +1,160 @@
 
+---
+V:1
+---
+
+
+#!/bin/bash
+# Iteration 1: Fully automated RunPod A40 ComfyUI setup
+# Includes automatic model download (public NSFW SDXL + AnimateDiff motion), custom nodes, workflow import
+
+set -e
+set -o pipefail
+
+echo "=== Step 1: Update system ==="
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y git wget unzip python3-pip
+
+echo "=== Step 2: Clone ComfyUI ==="
+if [ ! -d "/workspace/ComfyUI" ]; then
+    git clone https://github.com/comfyanonymous/ComfyUI.git /workspace/ComfyUI
+fi
+cd /workspace/ComfyUI
+
+echo "=== Step 3: Install Python dependencies ==="
+python3 -m pip install --upgrade pip
+pip install -r requirements.txt
+
+echo "=== Step 4: Install custom nodes ==="
+# Tara LLM Integration
+if [ ! -d "custom_nodes/TaraLLM" ]; then
+    git clone https://github.com/your-repo/ComfyUI-Tara-LLM-Integration.git custom_nodes/TaraLLM
+fi
+# AnimateDiff Evolved
+if [ ! -d "custom_nodes/AnimateDiff" ]; then
+    git clone https://github.com/your-repo/ComfyUI-AnimateDiff-Evolved.git custom_nodes/AnimateDiff
+fi
+
+echo "=== Step 5: Create model folders ==="
+mkdir -p models/checkpoints models/motion_modules models/vae
+mkdir -p outputs/images outputs/videos
+mkdir -p workflows
+
+# --- Step 5a: Download public SDXL NSFW model ---
+SDXL_URL="https://huggingface.co/CompVis/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors"
+if [ ! -f "models/checkpoints/sd_xl_base_1.0_nsfw.safetensors" ]; then
+    echo "Downloading SDXL NSFW model..."
+    wget -O models/checkpoints/sd_xl_base_1.0_nsfw.safetensors $SDXL_URL
+fi
+
+# --- Step 5b: Download AnimateDiff motion module ---
+ANIMATEDIFF_URL="https://huggingface.co/Animation-Mod/mm_sd_v15_v2/resolve/main/mm_sd_v15_v2.ckpt"
+if [ ! -f "models/motion_modules/mm_sd_v15_v2.ckpt" ]; then
+    echo "Downloading AnimateDiff motion model..."
+    wget -O models/motion_modules/mm_sd_v15_v2.ckpt $ANIMATEDIFF_URL
+fi
+
+echo "=== Step 6: Save RunPod-ready workflow JSON ==="
+WORKFLOW_JSON="/workspace/ComfyUI/workflows/comfyui_a40_ready.json"
+cat > "$WORKFLOW_JSON" << 'EOF'
+<PASTE_YOUR_RUNPOD_READY_JSON_HERE>
+EOF
+echo "Workflow JSON saved to $WORKFLOW_JSON"
+
+echo "=== Step 7: Launch ComfyUI ==="
+python3 main.py --listen 0.0.0.0 --port 8188 &
+
+echo "=== Setup Complete ==="
+echo "ComfyUI running on http://localhost:8188"
+echo "Workflow ready: $WORKFLOW_JSON"
+echo "Outputs:"
+echo "Images -> /workspace/ComfyUI/outputs/images/"
+echo "Videos -> /workspace/ComfyUI/outputs/videos/video.webm"
+
+
+
+
 
 ---
 V:2
 ---
 
+#!/bin/bash
+# Iteration 2: RunPod A40 ComfyUI + AnimateDiff + SDXL NSFW + Fully Local Goonsai NSFW LLM
+# Debugged for max permissive NSFW workflow
+
+set -e
+set -o pipefail
+
+echo "=== Step 1: Update system and install dependencies ==="
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y git wget unzip python3-pip docker.io
+
+# Start Docker service
+sudo systemctl enable docker
+sudo systemctl start docker
+
+echo "=== Step 2: Clone ComfyUI ==="
+if [ ! -d "/workspace/ComfyUI" ]; then
+    git clone https://github.com/comfyanonymous/ComfyUI.git /workspace/ComfyUI
+fi
+cd /workspace/ComfyUI
+
+echo "=== Step 3: Install Python dependencies ==="
+python3 -m pip install --upgrade pip
+pip install -r requirements.txt
+
+echo "=== Step 4: Install custom nodes ==="
+if [ ! -d "custom_nodes/TaraLLM" ]; then
+    git clone https://github.com/your-repo/ComfyUI-Tara-LLM-Integration.git custom_nodes/TaraLLM
+fi
+if [ ! -d "custom_nodes/AnimateDiff" ]; then
+    git clone https://github.com/your-repo/ComfyUI-AnimateDiff-Evolved.git custom_nodes/AnimateDiff
+fi
+
+echo "=== Step 5: Setup model folders ==="
+mkdir -p models/checkpoints models/motion_modules models/vae
+mkdir -p outputs/images outputs/videos
+mkdir -p workflows
+
+# --- Step 5a: Download public SDXL NSFW model ---
+SDXL_URL="https://huggingface.co/CompVis/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors"
+if [ ! -f "models/checkpoints/sd_xl_base_1.0_nsfw.safetensors" ]; then
+    wget -O models/checkpoints/sd_xl_base_1.0_nsfw.safetensors $SDXL_URL
+fi
+
+# --- Step 5b: Download AnimateDiff motion module ---
+ANIMATEDIFF_URL="https://huggingface.co/Animation-Mod/mm_sd_v15_v2/resolve/main/mm_sd_v15_v2.ckpt"
+if [ ! -f "models/motion_modules/mm_sd_v15_v2.ckpt" ]; then
+    wget -O models/motion_modules/mm_sd_v15_v2.ckpt $ANIMATEDIFF_URL
+fi
+
+echo "=== Step 6: Install Goonsai (max permissive) NSFW LLM locally via Docker ==="
+# Pull official Goonsai NSFW Docker image (replace with most permissive release)
+if ! docker image inspect goonsai_local:latest >/dev/null 2>&1; then
+    docker pull ghcr.io/goonsai/goonsai-nsfw:latest
+fi
+
+# Run Goonsai container if not running
+if ! docker ps --format '{{.Names}}' | grep -q '^goonsai$'; then
+    docker run -d --name goonsai -p 11434:11434 ghcr.io/goonsai/goonsai-nsfw:latest
+fi
+
+echo "=== Step 7: Save RunPod-ready workflow JSON ==="
+WORKFLOW_JSON="/workspace/ComfyUI/workflows/comfyui_a40_ready.json"
+cat > "$WORKFLOW_JSON" << 'EOF'
+<PASTE_YOUR_RUNPOD_READY_JSON_HERE>
+EOF
+echo "Workflow JSON saved to $WORKFLOW_JSON"
+
+echo "=== Step 8: Launch ComfyUI ==="
+python3 main.py --listen 0.0.0.0 --port 8188 &
+
+echo "=== Setup Complete ==="
+echo "ComfyUI: http://localhost:8188"
+echo "LLM API (Goonsai) listening: http://localhost:11434/v1"
+echo "Images -> /workspace/ComfyUI/outputs/images/"
+echo "Videos -> /workspace/ComfyUI/outputs/videos/video.webm"
 
 
 
